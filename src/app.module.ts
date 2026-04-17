@@ -4,6 +4,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { UsersModule } from './modules/users/users.module';
+import { ExercisesModule } from './modules/exercises/exercises.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -12,6 +13,7 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     PrismaModule,
     AuthModule,
     UsersModule,
+    ExercisesModule,
   ],
   providers: [
     {
