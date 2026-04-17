@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: gitfit-webservice
+    env: node
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma migrate deploy && node dist/main
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_REFRESH_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 15m
+      - key: JWT_REFRESH_EXPIRES_IN
+        value: 7d
+      - key: EXERCISE_DB_URL
+        value: https://exercisedb-api.vercel.app/api/v2
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3000
