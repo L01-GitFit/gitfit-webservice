@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "gitfit-webservice",
+			"path": "../../.."
+		},
+		{
+			"name": "gitfit-expo-app",
+			"path": "../../../../gitfit-expo-app"
+		}
+	],
+	"settings": {}
+}

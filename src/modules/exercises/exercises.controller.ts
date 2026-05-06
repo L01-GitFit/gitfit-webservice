@@ -38,6 +38,14 @@ export class ExercisesController {
     return this.exercisesService.findAll(query);
   }
 
+  // @Post('sync')
+  // @HttpCode(HttpStatus.OK)
+  // @ApiOperation({ summary: 'Trigger ExerciseDB sync (fetches all exercises and upserts)' })
+  // @ApiResponse({ status: 200, description: 'Sync complete' })
+  // sync() {
+  //   return this.exercisesService.sync();
+  // }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a single exercise by ID' })
   @ApiParam({ name: 'id', description: 'Exercise UUID' })

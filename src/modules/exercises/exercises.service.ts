@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
@@ -8,9 +9,12 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { QueryExerciseDto } from './dto/query-exercise.dto';
 import { CreateExerciseDto } from './dto/create-exercise.dto';
 import { UpdateExerciseDto } from './dto/update-exercise.dto';
+import { UpsertExerciseDto } from './dto/upsert-exercise.dto';
 
 @Injectable()
 export class ExercisesService {
+  private readonly logger = new Logger(ExercisesService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ─── GET /exercises ──────────────────────────────────────────────────────────
@@ -116,6 +120,26 @@ export class ExercisesService {
     await this.prisma.exercise.delete({ where: { id } });
 
     return { message: 'Exercise deleted successfully' };
+  }
+
+  // ─── POST (cache-on-demand) ──────────────────────────────────────────────────
+
+  async upsertFromExternalApi(dto: UpsertExerciseDto) {
+    return this.prisma.exercise.upsert({
+      where: { exerciseDbId: dto.exerciseDbId },
+      create: {
+        exerciseDbId: dto.exerciseDbId,
+        name: dto.name,
+        gifUrl: dto.gifUrl ?? null,
+        targetMuscles: dto.targetMuscles,
+        bodyParts: dto.bodyParts,
+        equipments: dto.equipments,
+        secondaryMuscles: dto.secondaryMuscles,
+        instructions: dto.instructions,
+        isCustom: false,
+      },
+      update: {},
+    });
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────

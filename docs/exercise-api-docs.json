@@ -2,7 +2,7 @@
     "openapi": "3.1.0",
     "servers": [
         {
-            "url": "https://exercisedb-em4pswpa1-nguyen-duys-projects-cdb3bad3.vercel.app",
+            "url": "https://exercisedb-api-mauve.vercel.app",
             "description": "v1 Dataset (Open Source)\n• Public & open license\n• Code and metadata available on GitHub\n• GIF-based media\n• Ideal for demos, personal apps, and learning\n• chat support for full dataset access"
         }
     ],

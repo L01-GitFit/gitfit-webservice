@@ -9,6 +9,10 @@ import { UsersModule } from './modules/users/users.module';
 import { ExercisesModule } from './modules/exercises/exercises.module';
 import { WorkoutSessionsModule } from './modules/workout-sessions/workout-sessions.module';
 import { WorkoutSetsModule } from './modules/workout-sets/workout-sets.module';
+import { ProgramsModule } from './modules/programs/programs.module';
+import { RoutinesModule } from './modules/routines/routines.module';
+import { PersonalRecordsModule } from './modules/personal-records/personal-records.module';
+import { StatsModule } from './modules/stats/stats.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 
 @Module({
@@ -22,6 +26,10 @@ import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
     ExercisesModule,
     WorkoutSessionsModule,
     WorkoutSetsModule,
+    ProgramsModule,
+    RoutinesModule,
+    PersonalRecordsModule,
+    StatsModule,
   ],
   providers: [
     {

@@ -1,16 +1,22 @@
 import {
   BadRequestException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, SessionStatus } from '@prisma/client';
+import { Prisma, SessionStatus, WorkoutSet } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
+import { ExercisesService } from '../exercises/exercises.service';
 import { CreateWorkoutSessionDto } from './dto/create-workout-session.dto';
 import { QueryWorkoutSessionDto } from './dto/query-workout-session.dto';
+import { CreateSetDto } from './dto/create-set.dto';
 
 @Injectable()
 export class WorkoutSessionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly exercisesService: ExercisesService,
+  ) {}
 
   // ─── GET /workout-sessions ──────────────────────────────────────────────────
 
@@ -177,6 +183,62 @@ export class WorkoutSessionsService {
       },
       select: this.detailSelect(),
     });
+  }
+
+  // ─── POST /workout-sessions/:id/sets ────────────────────────────────────────
+
+  async logSet(userId: string, sessionId: string, dto: CreateSetDto) {
+    const session = await this.prisma.workoutSession.findUnique({ where: { id: sessionId } });
+    if (!session) throw new NotFoundException('Session not found');
+    if (session.userId !== userId) throw new ForbiddenException();
+    if (session.status !== SessionStatus.IN_PROGRESS) throw new BadRequestException('Session is not active');
+
+    const exercise = await this.exercisesService.upsertFromExternalApi(dto.exercise);
+
+    const workoutSet = await this.prisma.workoutSet.create({
+      data: {
+        sessionId,
+        exerciseId: exercise.id,
+        setNumber: dto.setNumber,
+        reps: dto.reps ?? null,
+        weightKg: dto.weightKg ?? null,
+        durationSeconds: dto.durationSeconds ?? null,
+        distanceMeters: dto.distanceMeters ?? null,
+        rpe: dto.rpe ?? null,
+        isWarmup: dto.isWarmup ?? false,
+      },
+      include: { exercise: true },
+    });
+
+    if (!dto.isWarmup && dto.weightKg) {
+      await this.detectAndUpdatePR(userId, exercise.id, workoutSet);
+    }
+
+    return workoutSet;
+  }
+
+  private async detectAndUpdatePR(userId: string, exerciseId: string, set: WorkoutSet) {
+    if (!set.weightKg) return;
+
+    const existing = await this.prisma.personalRecord.findUnique({
+      where: { userId_exerciseId_recordType: { userId, exerciseId, recordType: 'MAX_WEIGHT' } },
+    });
+
+    const isNewPr = !existing || set.weightKg > existing.value;
+
+    if (isNewPr) {
+      await Promise.all([
+        this.prisma.personalRecord.upsert({
+          where: { userId_exerciseId_recordType: { userId, exerciseId, recordType: 'MAX_WEIGHT' } },
+          create: { userId, exerciseId, recordType: 'MAX_WEIGHT', value: set.weightKg, unit: 'kg', achievedAt: set.loggedAt, sessionId: set.sessionId },
+          update: { value: set.weightKg, achievedAt: set.loggedAt, sessionId: set.sessionId },
+        }),
+        this.prisma.workoutSet.update({
+          where: { id: set.id },
+          data: { isPr: true },
+        }),
+      ]);
+    }
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────

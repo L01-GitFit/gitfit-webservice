@@ -1,9 +1,8 @@
 import {
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { Prisma, RecordType } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateWorkoutSetDto } from './dto/create-workout-set.dto';
 import { UpdateWorkoutSetDto } from './dto/update-workout-set.dto';
@@ -90,7 +89,9 @@ export class WorkoutSetsService {
       );
     }
 
-    return this.prisma.workoutSet.create({
+    const isPr = await this.detectPr(userId, dto.exerciseId, dto.weightKg);
+
+    const workoutSet = await this.prisma.workoutSet.create({
       data: {
         sessionId,
         exerciseId: dto.exerciseId,
@@ -101,10 +102,36 @@ export class WorkoutSetsService {
         distanceMeters: dto.distanceMeters ?? null,
         rpe: dto.rpe ?? null,
         isWarmup: dto.isWarmup ?? false,
-        isPr: dto.isPr ?? false,
+        isPr,
       },
       select: this.detailSelect(),
     });
+
+    if (isPr && dto.weightKg) {
+      await this.prisma.personalRecord.upsert({
+        where: { userId_exerciseId_recordType: { userId, exerciseId: dto.exerciseId, recordType: RecordType.MAX_WEIGHT } },
+        create: {
+          userId,
+          exerciseId: dto.exerciseId,
+          recordType: RecordType.MAX_WEIGHT,
+          value: dto.weightKg,
+          unit: 'kg',
+          achievedAt: new Date(),
+          sessionId,
+        },
+        update: { value: dto.weightKg, achievedAt: new Date(), sessionId },
+      });
+    }
+
+    return workoutSet;
+  }
+
+  private async detectPr(userId: string, exerciseId: string, weightKg?: number | null): Promise<boolean> {
+    if (!weightKg) return false;
+    const existing = await this.prisma.personalRecord.findUnique({
+      where: { userId_exerciseId_recordType: { userId, exerciseId, recordType: RecordType.MAX_WEIGHT } },
+    });
+    return !existing || weightKg > existing.value;
   }
 
   // ─── GET /workout-sessions/:sessionId/workout-sets/:setId ──────────────────────

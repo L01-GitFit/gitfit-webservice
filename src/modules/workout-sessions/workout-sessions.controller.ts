@@ -20,6 +20,7 @@ import {
 import { WorkoutSessionsService } from './workout-sessions.service';
 import { CreateWorkoutSessionDto } from './dto/create-workout-session.dto';
 import { QueryWorkoutSessionDto } from './dto/query-workout-session.dto';
+import { CreateSetDto } from './dto/create-set.dto';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
 @ApiTags('workout-sessions')
@@ -93,5 +94,21 @@ export class WorkoutSessionsController {
     @CurrentUser('id') userId: string,
   ) {
     return this.workoutSessionsService.cancel(id, userId);
+  }
+
+  @Post(':id/sets')
+  @ApiOperation({ summary: 'Log a set (upserts exercise from ExerciseDB, auto-detects PR)' })
+  @ApiParam({ name: 'id', description: 'Session ID' })
+  @ApiResponse({ status: 201, description: 'Set logged. isPr=true if new personal record' })
+  @ApiResponse({ status: 400, description: 'Session not active' })
+  @ApiResponse({ status: 403, description: 'Forbidden' })
+  @ApiResponse({ status: 404, description: 'Session not found' })
+  @ApiBearerAuth('access-token')
+  logSet(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: CreateSetDto,
+  ) {
+    return this.workoutSessionsService.logSet(userId, id, dto);
   }
 }
