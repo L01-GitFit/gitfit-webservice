@@ -18,6 +18,7 @@ import { Request } from 'express';
 import { AuthService } from './auth.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { GoogleLoginDto } from './dto/google-login.dto';
 import { Public } from '../../common/decorators/public.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -79,5 +80,15 @@ export class AuthController {
     @Body('refreshToken') refreshToken: string,
   ) {
     return this.authService.logout(userId, refreshToken);
+  }
+
+  @Public()
+  @Post('google')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Sign in with a Google ID token (mobile OAuth flow)' })
+  @ApiResponse({ status: 200, description: 'Authenticated successfully, tokens returned' })
+  @ApiResponse({ status: 401, description: 'Invalid or expired Google token' })
+  loginWithGoogle(@Body() dto: GoogleLoginDto) {
+    return this.authService.loginWithGoogle(dto.idToken);
   }
 }
