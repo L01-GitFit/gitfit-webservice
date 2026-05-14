@@ -1,7 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
-  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
@@ -61,15 +60,6 @@ export class CreateWorkoutSetDto {
 }
 
 export class CreateWorkoutSessionDto {
-  @ApiProperty({
-    description: 'Session name',
-    example: 'Morning Push Day',
-  })
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(200)
-  name!: string;
-
   @ApiPropertyOptional({
     description: 'Routine UUID (if starting from a routine)',
     example: 'uuid-of-routine',

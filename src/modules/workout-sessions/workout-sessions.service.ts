@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma, SessionStatus, WorkoutSet } from '@prisma/client';
+import { Prisma, RecordType, SessionStatus, WorkoutSet } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ExercisesService } from '../exercises/exercises.service';
 import { CreateWorkoutSessionDto } from './dto/create-workout-session.dto';
@@ -65,12 +65,14 @@ export class WorkoutSessionsService {
       }
     }
 
+    const startedAt = new Date();
+
     return this.prisma.workoutSession.create({
       data: {
         userId,
         routineId: dto.routineId ?? null,
-        name: dto.name,
-        startedAt: new Date(),
+        name: this.getDefaultSessionNameByHour(startedAt.getHours()),
+        startedAt,
         notes: dto.notes ?? null,
         status: SessionStatus.IN_PROGRESS,
         ...(dto.sets && dto.sets.length > 0
@@ -92,6 +94,22 @@ export class WorkoutSessionsService {
       },
       select: this.detailSelect(),
     });
+  }
+
+  private getDefaultSessionNameByHour(hour: number): string {
+    if (hour >= 5 && hour < 12) {
+      return 'Morning exercise';
+    }
+
+    if (hour >= 12 && hour < 17) {
+      return 'Afternoon exercise';
+    }
+
+    if (hour >= 17 && hour < 21) {
+      return 'Evening exercise';
+    }
+
+    return 'Night exercise';
   }
 
   // ─── GET /workout-sessions/:id ──────────────────────────────────────────────
@@ -143,6 +161,8 @@ export class WorkoutSessionsService {
       }
       return acc;
     }, 0);
+
+    await this.updateSessionPersonalRecords(userId, id, session.workoutSets);
 
     return this.prisma.workoutSession.update({
       where: { id },
@@ -210,35 +230,121 @@ export class WorkoutSessionsService {
       include: { exercise: true },
     });
 
-    if (!dto.isWarmup && dto.weightKg) {
-      await this.detectAndUpdatePR(userId, exercise.id, workoutSet);
-    }
-
     return workoutSet;
   }
 
-  private async detectAndUpdatePR(userId: string, exerciseId: string, set: WorkoutSet) {
-    if (!set.weightKg) return;
+  private async updateSessionPersonalRecords(userId: string, sessionId: string, sets: WorkoutSet[]) {
+    const exerciseIds = [...new Set(sets.map((set) => set.exerciseId))];
+    if (exerciseIds.length === 0) return;
 
-    const existing = await this.prisma.personalRecord.findUnique({
-      where: { userId_exerciseId_recordType: { userId, exerciseId, recordType: 'MAX_WEIGHT' } },
+    const existingRecords = await this.prisma.personalRecord.findMany({
+      where: {
+        userId,
+        exerciseId: { in: exerciseIds },
+        recordType: { in: [RecordType.MAX_WEIGHT, RecordType.MAX_REPS] },
+      },
     });
 
-    const isNewPr = !existing || set.weightKg > existing.value;
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      this.prisma.workoutSet.updateMany({
+        where: { sessionId },
+        data: { isPr: false },
+      }),
+    ];
+    const prSetIds = new Set<string>();
 
-    if (isNewPr) {
-      await Promise.all([
-        this.prisma.personalRecord.upsert({
-          where: { userId_exerciseId_recordType: { userId, exerciseId, recordType: 'MAX_WEIGHT' } },
-          create: { userId, exerciseId, recordType: 'MAX_WEIGHT', value: set.weightKg, unit: 'kg', achievedAt: set.loggedAt, sessionId: set.sessionId },
-          update: { value: set.weightKg, achievedAt: set.loggedAt, sessionId: set.sessionId },
-        }),
-        this.prisma.workoutSet.update({
-          where: { id: set.id },
+    for (const exerciseId of exerciseIds) {
+      const setsByExercise = sets.filter((set) => set.exerciseId === exerciseId && !set.isWarmup);
+      if (setsByExercise.length === 0) continue;
+
+      const existingWeight = existingRecords.find(
+        (record) => record.exerciseId === exerciseId && record.recordType === RecordType.MAX_WEIGHT,
+      );
+      const existingReps = existingRecords.find(
+        (record) => record.exerciseId === exerciseId && record.recordType === RecordType.MAX_REPS,
+      );
+
+      const bestWeightSet = setsByExercise.reduce<WorkoutSet | null>((best, current) => {
+        if ((current.weightKg ?? 0) <= (existingWeight?.value ?? 0)) return best;
+        if (!best) return current;
+        return (current.weightKg ?? 0) > (best.weightKg ?? 0) ? current : best;
+      }, null);
+
+      if (bestWeightSet && (bestWeightSet.weightKg ?? 0) > 0) {
+        prSetIds.add(bestWeightSet.id);
+        operations.push(
+          this.prisma.personalRecord.upsert({
+            where: {
+              userId_exerciseId_recordType: {
+                userId,
+                exerciseId,
+                recordType: RecordType.MAX_WEIGHT,
+              },
+            },
+            create: {
+              userId,
+              exerciseId,
+              recordType: RecordType.MAX_WEIGHT,
+              value: bestWeightSet.weightKg!,
+              unit: 'kg',
+              achievedAt: bestWeightSet.loggedAt,
+              sessionId: bestWeightSet.sessionId,
+            },
+            update: {
+              value: bestWeightSet.weightKg!,
+              achievedAt: bestWeightSet.loggedAt,
+              sessionId: bestWeightSet.sessionId,
+            },
+          }),
+        );
+      }
+
+      const bestRepsSet = setsByExercise.reduce<WorkoutSet | null>((best, current) => {
+        if ((current.reps ?? 0) <= (existingReps?.value ?? 0)) return best;
+        if (!best) return current;
+        return (current.reps ?? 0) > (best.reps ?? 0) ? current : best;
+      }, null);
+
+      if (bestRepsSet && (bestRepsSet.reps ?? 0) > 0) {
+        prSetIds.add(bestRepsSet.id);
+        operations.push(
+          this.prisma.personalRecord.upsert({
+            where: {
+              userId_exerciseId_recordType: {
+                userId,
+                exerciseId,
+                recordType: RecordType.MAX_REPS,
+              },
+            },
+            create: {
+              userId,
+              exerciseId,
+              recordType: RecordType.MAX_REPS,
+              value: bestRepsSet.reps!,
+              unit: 'reps',
+              achievedAt: bestRepsSet.loggedAt,
+              sessionId: bestRepsSet.sessionId,
+            },
+            update: {
+              value: bestRepsSet.reps!,
+              achievedAt: bestRepsSet.loggedAt,
+              sessionId: bestRepsSet.sessionId,
+            },
+          }),
+        );
+      }
+    }
+
+    if (prSetIds.size > 0) {
+      operations.push(
+        this.prisma.workoutSet.updateMany({
+          where: { id: { in: [...prSetIds] } },
           data: { isPr: true },
         }),
-      ]);
+      );
     }
+
+    await this.prisma.$transaction(operations);
   }
 
   // ─── Private helpers ────────────────────────────────────────────────────────
