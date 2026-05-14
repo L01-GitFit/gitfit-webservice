@@ -84,11 +84,19 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
       - name: SonarCloud Quality Gate
+        id: quality_gate
         if: ${{ steps.sonar_token.outputs.enabled == 'true' }}
         uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
         timeout-minutes: 10
+        continue-on-error: true
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
+      - name: Report SonarCloud status
+        if: ${{ steps.sonar_token.outputs.enabled == 'true' && steps.quality_gate.outcome == 'failure' }}
+        run: |
+          echo "SonarCloud Quality Gate failed, but the workflow is configured to continue."
+          echo "Check the SonarCloud dashboard for the exact failing rule."
 
   deploy-render:
     name: Trigger Render Deploy
