@@ -146,6 +146,14 @@ describe('WorkoutSessionsService', () => {
     await expect(service.findOne('missing', 'user-1')).rejects.toThrow(NotFoundException);
   });
 
+  it('findOne returns session when found', async () => {
+    prismaMock.workoutSession.findFirst.mockResolvedValue({ id: 's-1', userId: 'user-1' });
+
+    const result = await service.findOne('s-1', 'user-1');
+
+    expect(result).toEqual({ id: 's-1', userId: 'user-1' });
+  });
+
   it('finish throws when status is not IN_PROGRESS', async () => {
     prismaMock.workoutSession.findFirst.mockResolvedValue({
       id: 's-1',
@@ -231,6 +239,90 @@ describe('WorkoutSessionsService', () => {
     );
     expect(prismaMock.$transaction).toHaveBeenCalled();
     expect(result.status).toBe(SessionStatus.COMPLETED);
+  });
+
+  it('finish ignores sets without complete reps*weight for total volume', async () => {
+    prismaMock.workoutSession.findFirst.mockResolvedValue({
+      id: 's-1',
+      userId: 'user-1',
+      startedAt: new Date(Date.now() - 600000),
+      status: SessionStatus.IN_PROGRESS,
+      workoutSets: [
+        {
+          id: 'set-1',
+          sessionId: 's-1',
+          exerciseId: 'e-1',
+          setNumber: 1,
+          reps: 10,
+          weightKg: null,
+          durationSeconds: null,
+          distanceMeters: null,
+          rpe: null,
+          isWarmup: false,
+          isPr: false,
+          loggedAt: new Date('2026-05-14T08:00:00.000Z'),
+        },
+      ],
+    });
+    prismaMock.personalRecord.findMany.mockResolvedValue([]);
+    prismaMock.workoutSet.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.workoutSession.update.mockResolvedValue({ id: 's-1', status: SessionStatus.COMPLETED });
+
+    await service.finish('s-1', 'user-1');
+
+    expect(prismaMock.workoutSession.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ totalVolumeKg: null }),
+      }),
+    );
+  });
+
+  it('finish does not upsert PR when existing records are higher', async () => {
+    prismaMock.workoutSession.findFirst.mockResolvedValue({
+      id: 's-1',
+      userId: 'user-1',
+      startedAt: new Date(Date.now() - 600000),
+      status: SessionStatus.IN_PROGRESS,
+      workoutSets: [
+        {
+          id: 'set-1',
+          sessionId: 's-1',
+          exerciseId: 'e-1',
+          setNumber: 1,
+          reps: 5,
+          weightKg: 60,
+          durationSeconds: null,
+          distanceMeters: null,
+          rpe: null,
+          isWarmup: false,
+          isPr: false,
+          loggedAt: new Date('2026-05-14T08:00:00.000Z'),
+        },
+      ],
+    });
+    prismaMock.personalRecord.findMany.mockResolvedValue([
+      {
+        id: 'pr-weight',
+        userId: 'user-1',
+        exerciseId: 'e-1',
+        recordType: RecordType.MAX_WEIGHT,
+        value: 100,
+      },
+      {
+        id: 'pr-reps',
+        userId: 'user-1',
+        exerciseId: 'e-1',
+        recordType: RecordType.MAX_REPS,
+        value: 20,
+      },
+    ]);
+    prismaMock.workoutSet.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.workoutSession.update.mockResolvedValue({ id: 's-1', status: SessionStatus.COMPLETED });
+
+    await service.finish('s-1', 'user-1');
+
+    expect(prismaMock.personalRecord.upsert).not.toHaveBeenCalled();
+    expect(prismaMock.$transaction).toHaveBeenCalled();
   });
 
   it('cancel throws when session not found', async () => {
